@@ -29,12 +29,14 @@
 *.dylib
 
 # Executables
-*.exe
 *.out
 *.app
 *.i*86
 *.x86_64
 *.hex
+ais_read
+ais_relay
+nmea_parse
 
 # Debug files
 *.dSYM/
