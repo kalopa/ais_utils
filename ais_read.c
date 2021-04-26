@@ -213,7 +213,6 @@ serial_read()
 		return;
 	udp_write(rdbuffer, nbytes);
 	rdoffset -= nbytes;
-	printf("rdo:%d,nbytes:%d\n", rdoffset, nbytes);
 	if (rdoffset > 0)
 		memmove(rdbuffer, &rdbuffer[nbytes], rdoffset);
 }
@@ -227,7 +226,6 @@ udp_open(char *host, int port)
 	struct sockaddr_in sin;
 	in_addr_t addr;
 
-	printf("Host: [%s]:%d\n", host, port);
 	if ((addr = inet_addr(host)) == INADDR_NONE) {
 		struct hostent *hp;
 

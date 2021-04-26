@@ -52,9 +52,10 @@
 
 #define BUFFER_SIZE		512
 
-int		src_fd;
-int		dst_fd;
-char	buffer[BUFFER_SIZE];
+int				src_fd;
+int				dst_fd;
+char			buffer[BUFFER_SIZE];
+unsigned long	msg_count;
 
 void	usage();
 
@@ -130,7 +131,10 @@ main(int argc, char *argv[])
 		perror("ais_relay (connect)");
 		exit(1);
 	}
+	msg_count = 0L;
 	while ((i = read(src_fd, buffer, BUFFER_SIZE)) >= 0) {
+		if ((++msg_count % 100L) == 0)
+			printf("%ld packets relayed.\n", msg_count);
 		if (write(dst_fd, buffer, i) < 0) {
 			perror("ais_relay (udp write)");
 			exit(1);
