@@ -154,7 +154,8 @@ process()
 			exit(1);
 		}
 		if (n == 0) {
-			printf("Select returned zero\n");
+			printf("z\n");
+			fflush(stdout);
 			continue;
 		}
 		if (FD_ISSET(serfd, &rdfds))
@@ -239,8 +240,8 @@ udp_open(char *host, int port)
 		perror("ais_read (udp_open)");
 		exit(1);
 	}
-    memset(&sin, 0, sizeof(struct sockaddr_in));
-    sin.sin_family = AF_INET;
+	memset(&sin, 0, sizeof(struct sockaddr_in));
+	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = addr;
 	sin.sin_port = htons(port);
 	if (connect(ufd, (const struct sockaddr *)&sin, sizeof(struct sockaddr_in)) < 0) {
@@ -259,6 +260,7 @@ udp_write(char *bufp, int nbytes)
 		perror("ais_read (udp_write)");
 		exit(1);
 	}
+	putchar('.');
 }
 
 /*
