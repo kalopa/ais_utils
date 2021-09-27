@@ -3,16 +3,10 @@
 #
 CFLAGS=	-O -Wall
 
-all:	ais_read ais_relay nmea_parse
+all:	ais_relay
 
 clean:
-	rm -f ais_read ais_relay nmea_parse *.o
+	rm -f ais_relay *.o
 
-ais_read: ais_read.o
-	$(CC) -o ais_read ais_read.o
-
-ais_relay: ais_relay.o
-	$(CC) -o ais_relay ais_relay.o
-
-nmea_parse: nmea_parse.o
-	$(CC) -o nmea_parse nmea_parse.o
+ais_relay: main.o
+	$(CC) -o ais_relay main.o

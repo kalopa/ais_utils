@@ -52,10 +52,17 @@
 
 #define BUFFER_SIZE		512
 
+struct ais_dest {
+	struct ais_dest	*next;
+	int				fd;
+	char			*host;
+	int				port;
+};
+
 int				src_fd;
-int				dst_fd;
 char			buffer[BUFFER_SIZE];
 unsigned long	msg_count;
+struct ais_dest	*dlist;
 
 void	usage();
 
@@ -65,28 +72,23 @@ void	usage();
 int
 main(int argc, char *argv[])
 {
-	int i, src_port, dst_port;
-	char *src_host, *dst_host, *cp;
+	int i, src_port;
+	char *src_host, *cp;
 	struct hostent *hp;
 	struct sockaddr_in sin;
 	in_addr_t addr;
+	struct ais_dest *adp, *dtail;
 
-	if (argc != 3)
+	if (argc < 3)
 		usage();
+	dlist = dtail = NULL;
 	src_host = argv[1];
-	dst_host = argv[2];
 	if ((cp = strchr(src_host, ':')) != NULL) {
 		*cp++ = '\0';
 		src_port = atoi(cp);
 	} else
 		src_port = 4321;
-	if ((cp = strchr(dst_host, ':')) != NULL) {
-		*cp++ = '\0';
-		dst_port = atoi(cp);
-	} else
-		dst_port = 2500;
 	printf("SRC: %s - %d\n", src_host, src_port);
-	printf("DST: %s - %d\n", dst_host, dst_port);
 	/*
 	 * Open a UDP port for listening...
 	 */
@@ -101,8 +103,8 @@ main(int argc, char *argv[])
 		perror("ais_relay (udp_open)");
 		exit(1);
 	}
-    memset(&sin, 0, sizeof(struct sockaddr_in));
-    sin.sin_family = AF_INET;
+	memset(&sin, 0, sizeof(struct sockaddr_in));
+	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = addr;
 	sin.sin_port = htons(src_port);
 	if (bind(src_fd, (const struct sockaddr *)&sin, sizeof(struct sockaddr_in)) < 0) {
@@ -110,34 +112,60 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 	/*
-	 * Now open a connection to the destination...
+	 * Now create all of the destinations...
 	 */
-	if ((addr = inet_addr(dst_host)) == INADDR_NONE) {
-		if ((hp = gethostbyname(dst_host)) == NULL) {
-			fprintf(stderr, "?Error - unresolved hostname: %s\n", dst_host);
-			exit(2);
+	for (i = 2; i < argc; i++) {
+		if ((adp = (struct ais_dest *)malloc(sizeof(*adp))) == NULL) {
+			perror("ais_relay: malloc");
+			exit(1);
 		}
-		memcpy((char *)&addr, hp->h_addr, hp->h_length);
-	}
-	if ((dst_fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
-		perror("ais_relay (udp_open)");
-		exit(1);
-	}
-    memset(&sin, 0, sizeof(struct sockaddr_in));
-    sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = addr;
-	sin.sin_port = htons(dst_port);
-	if (connect(dst_fd, (const struct sockaddr *)&sin, sizeof(struct sockaddr_in)) < 0) {
-		perror("ais_relay (connect)");
-		exit(1);
+		adp->next = NULL;
+		if (dlist == NULL)
+			dlist = adp;
+		else
+			dtail->next = adp;
+		dtail = adp;
+		adp->host = strdup(argv[i]);
+		if ((cp = strchr(adp->host, ':')) != NULL) {
+			*cp++ = '\0';
+			adp->port = atoi(cp);
+		} else
+			adp->port = 2500;
+		printf("DSTn: %s - %d\n", adp->host, adp->port);
+		/*
+		 * Open a connection to the destination...
+		 */
+		if ((addr = inet_addr(adp->host)) == INADDR_NONE) {
+			if ((hp = gethostbyname(adp->host)) == NULL) {
+				fprintf(stderr, "?Error - unresolved hostname: %s\n", adp->host);
+				exit(2);
+			}
+			memcpy((char *)&addr, hp->h_addr, hp->h_length);
+		}
+		if ((adp->fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+			perror("ais_relay (udp_open)");
+			exit(1);
+		}
+		memset(&sin, 0, sizeof(struct sockaddr_in));
+		sin.sin_family = AF_INET;
+		sin.sin_addr.s_addr = addr;
+		sin.sin_port = htons(adp->port);
+		if (connect(adp->fd, (const struct sockaddr *)&sin, sizeof(struct sockaddr_in)) < 0) {
+			fprintf(stderr, "ais_relay: %s (port %d): ", adp->host, adp->port);
+			perror("connect");
+			exit(1);
+		}
 	}
 	msg_count = 0L;
 	while ((i = read(src_fd, buffer, BUFFER_SIZE)) >= 0) {
 		if ((++msg_count % 100L) == 0)
 			printf("%ld packets relayed.\n", msg_count);
-		if (write(dst_fd, buffer, i) < 0) {
-			perror("ais_relay (udp write)");
-			exit(1);
+		for (adp = dlist; adp != NULL; adp = adp->next) {
+			if (write(adp->fd, buffer, i) < 0) {
+				fprintf(stderr, "ais_relay: %s (port %d): ", adp->host, adp->port);
+				perror("udp write");
+				exit(1);
+			}
 		}
 	}
 	perror("ais_relay (udp read)");
@@ -148,20 +176,8 @@ main(int argc, char *argv[])
  *
  */
 void
-udp_write(char *bufp, int nbytes)
-{
-	if (write(src_fd, bufp, nbytes) != nbytes) {
-		perror("ais_relay (udp_write)");
-		exit(1);
-	}
-}
-
-/*
- *
- */
-void
 usage()
 {
-	fprintf(stderr, "Usage: ais_relay <src_host> <dst_host>\n");
+	fprintf(stderr, "Usage: ais_relay <src_host> <dst_host1> ...\n");
 	exit(2);
 }
