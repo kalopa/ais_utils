@@ -1,0 +1,12 @@
+version: "3"
+
+services:
+  ais-read:
+    image: registry.kalopa.net/ais-read:2.0
+    build:
+      context: ais_read/
+
+  ais-relay:
+    image: registry.kalopa.net/ais-relay:2.0
+    build:
+      context: ais_relay/
