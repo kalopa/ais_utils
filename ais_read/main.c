@@ -41,6 +41,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 #include <sys/time.h>
 #include <termios.h>
 #include <sys/socket.h>
@@ -72,12 +73,15 @@ int		serfd;
 int		ufd;
 int		rdoffset;
 char	rdbuffer[BUFFER_SIZE + 2];
+char	*datadir;
 
 void	process();
 void	serial_open(char *, speed_t);
 void	serial_read();
+void	ais_data(char *, int);
 void	udp_open(char *, int);
 void	udp_write(char *, int);
+void	make_path(char *);
 void	usage();
 
 /*
@@ -94,7 +98,8 @@ main(int argc, char *argv[])
 	port = 2500;
 	device = "/dev/ttyS0";
 	host = "data.aishub.net";
-	while ((i = getopt(argc, argv, "l:s:h:p:")) != EOF) {
+	datadir = NULL;
+	while ((i = getopt(argc, argv, "l:s:h:p:d:")) != EOF) {
 		switch (i) {
 		case 'l':
 			device = optarg;
@@ -119,6 +124,10 @@ main(int argc, char *argv[])
 		case 'p':
 			if ((port = atoi(optarg)) < 100 || port > 65535)
 				usage();
+			break;
+
+		case 'd':
+			datadir = optarg;
 			break;
 
 		default:
@@ -153,11 +162,8 @@ process()
 			perror("ais_read (select)");
 			exit(1);
 		}
-		if (n == 0) {
-			printf("z\n");
-			fflush(stdout);
+		if (n == 0)
 			continue;
-		}
 		if (FD_ISSET(serfd, &rdfds))
 			serial_read();
 	}
@@ -208,14 +214,82 @@ serial_read()
 	}
 	rdoffset += nbytes;
 	rdbuffer[rdoffset] = '\0';
-	if ((cp = strrchr(rdbuffer, '\n')) == NULL)
+	if ((cp = strrchr(rdbuffer, '\n')) == NULL || (nbytes = cp - rdbuffer + 1) < 5)
 		return;
-	if ((nbytes = cp - rdbuffer + 1) < 5)
-		return;
-	udp_write(rdbuffer, nbytes);
+	*cp = '\0';
+	if (strncmp(rdbuffer, "!AIV", 4) == 0)
+		ais_data(rdbuffer, nbytes);
 	rdoffset -= nbytes;
 	if (rdoffset > 0)
 		memmove(rdbuffer, &rdbuffer[nbytes], rdoffset);
+}
+
+/*
+ * Deal with a line of AIS data.
+ */
+void
+ais_data(char *datap, int len)
+{
+	unsigned int oldch, my_csum, their_csum;
+	char *cp, *endcp;
+	static FILE *logfp = NULL;
+	static int last_hour = 0;
+
+	oldch = 0;
+	if ((endcp = strpbrk(datap, "\r\n")) != NULL) {
+		oldch = *endcp;
+		*endcp = '\0';
+	}
+	for (my_csum = 0, cp = datap + 1; *cp != '\0' && *cp != '*'; cp++)
+		my_csum ^= *cp;
+	if (*cp != '*') {
+		fprintf(stderr, "?Error - missing checksum in serial data.\n%s\n", datap);
+		return;
+	}
+	*cp = '\0';
+	their_csum = (int )strtol(cp + 1, NULL, 16);
+	if (my_csum != their_csum) {
+		fprintf(stderr, "?Error - invalid checksum in serial data.\n%s\n", datap);
+		return;
+	}
+	if (datadir != NULL) {
+		char *fpath;
+		struct tm *tmp;
+		time_t now;
+
+		time(&now);
+		tmp = localtime(&now);
+		if (logfp == NULL || last_hour != tmp->tm_hour) {
+			if (logfp != NULL)
+				fclose(logfp);
+			if ((fpath = malloc(strlen(datadir) + 32)) == NULL) {
+				perror("malloc");
+				exit(1);
+			}
+			sprintf(fpath, "%s/%04d%02d%02d", datadir,
+							tmp->tm_year + 1900,
+							tmp->tm_mon + 1,
+							tmp->tm_mday);
+			make_path(fpath);
+			sprintf(fpath, "%s/%04d%02d%02d/ais%02d.log", datadir,
+							tmp->tm_year + 1900,
+							tmp->tm_mon + 1,
+							tmp->tm_mday, tmp->tm_hour);
+			if ((logfp = fopen(fpath, "a")) == NULL) {
+				perror(fpath);
+				exit(1);
+			}
+			free(fpath);
+			last_hour = tmp->tm_hour;
+		}
+		fprintf(logfp, "%02d:%02d:%02d:%s\n", tmp->tm_hour, tmp->tm_min,
+							tmp->tm_sec, datap + 1);
+		fflush(logfp);
+	}
+	*cp = '*';
+	if (endcp != NULL)
+		*endcp = oldch;
+	udp_write(datap, len);
 }
 
 /*
@@ -260,7 +334,34 @@ udp_write(char *bufp, int nbytes)
 		perror("ais_read (udp_write)");
 		exit(1);
 	}
-	putchar('.');
+}
+
+/*
+ *
+ */
+void
+make_path(char *path)
+{
+	char *cp;
+	struct stat stbuf;
+
+	printf("Make directory [%s] if it doesn't exist...\n", path);
+	if (stat(path, &stbuf) >= 0) {
+		if ((stbuf.st_mode & S_IFMT) != S_IFDIR) {
+			fprintf(stderr, "?Error - path '%s' is not a directory.\n", path);
+			exit(1);
+		}
+		return;
+	}
+	if ((cp = strrchr(path, '/')) != NULL) {
+		*cp = '\0';
+		make_path(path);
+		*cp = '/';
+	}
+	if (mkdir(path, 0755) < 0) {
+		perror(path);
+		exit(1);
+	}
 }
 
 /*
@@ -269,6 +370,6 @@ udp_write(char *bufp, int nbytes)
 void
 usage()
 {
-	fprintf(stderr, "Usage: ais_read -l <device> -s <speed> -h <host> -p <port>\n");
+	fprintf(stderr, "Usage: ais_read -l <device> -s <speed> -h <host> -p <port> -d <datadir>\n");
 	exit(2);
 }
