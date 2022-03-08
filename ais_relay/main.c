@@ -96,8 +96,14 @@ main(int argc, char *argv[])
 	 * Open a UDP port for listening...
 	 */
 	if ((addr = inet_addr(src_host)) == INADDR_NONE) {
-		if ((hp = gethostbyname(src_host)) == NULL) {
-			fprintf(stderr, "?Error - unresolved hostname: %s\n", src_host);
+		/*
+		 * Deal with some weird DNS issues.
+		 */
+		for (i = 0; i < 5; i++)
+			if ((hp = gethostbyname(src_host)) != NULL)
+				break;
+		if (hp == NULL) {
+			fprintf(stderr, "?Error - unresolved hostname: '%s'\n", src_host);
 			exit(2);
 		}
 		memcpy((char *)&addr, hp->h_addr, hp->h_length);
