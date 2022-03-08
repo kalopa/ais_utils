@@ -42,6 +42,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/time.h>
+#include <time.h>
 #include <termios.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -78,6 +79,8 @@ main(int argc, char *argv[])
 	struct sockaddr_in sin;
 	in_addr_t addr;
 	struct ais_dest *adp, *dtail;
+	time_t now;
+	struct tm *tmp;
 
 	if (argc < 3)
 		usage();
@@ -158,8 +161,14 @@ main(int argc, char *argv[])
 	}
 	msg_count = 0L;
 	while ((i = read(src_fd, buffer, BUFFER_SIZE)) >= 0) {
-		if ((++msg_count % 100L) == 0)
-			printf("%ld packets relayed.\n", msg_count);
+		if ((++msg_count % 10L) == 0) {
+			time(&now);
+			tmp = localtime(&now);
+			printf("%04d-%02d-%02d %02d:%02d:%02d: %ld packets relayed.\n",
+							tmp->tm_year + 1900, tmp->tm_mon + 1,
+							tmp->tm_mday, tmp->tm_hour, tmp->tm_min,
+							tmp->tm_sec, msg_count);
+		}
 		for (adp = dlist; adp != NULL; adp = adp->next) {
 			if (write(adp->fd, buffer, i) < 0) {
 				fprintf(stderr, "ais_relay: %s (port %d): ", adp->host, adp->port);
