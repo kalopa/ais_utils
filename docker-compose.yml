@@ -7,6 +7,6 @@ services:
       context: ais_read/
 
   ais-relay:
-    image: registry.kalopa.net/ais-relay:2.0
+    image: registry.kalopa.net/ais-relay:1.5
     build:
       context: ais_relay/
