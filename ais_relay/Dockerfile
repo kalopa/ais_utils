@@ -9,7 +9,6 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 
 ENV SRC_HOST=0.0.0.0:4321
-ENV DST_HOST=data.aishub.net:2501
 
 EXPOSE 4321
 WORKDIR /app/
