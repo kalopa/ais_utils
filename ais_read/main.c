@@ -208,10 +208,18 @@ serial_read()
 	int nbytes;
 	char *cp;
 
+	/*
+	 * Set an alarm here, because sometimes the device goes off
+	 * into the woods and the best thing to do is exit and allow
+	 * the restart to clear things out. The down-side is we don't
+	 * want to fail too often or Docker will get annoyed.
+	 */
+	alarm(60*60);
 	if ((nbytes = read(serfd, rdbuffer + rdoffset, BUFFER_SIZE - rdoffset)) < 0) {
 		perror("ais_read (process read)");
 		exit(1);
 	}
+	alarm(0);
 	rdoffset += nbytes;
 	rdbuffer[rdoffset] = '\0';
 	if ((cp = strrchr(rdbuffer, '\n')) == NULL || (nbytes = cp - rdbuffer + 1) < 5)
