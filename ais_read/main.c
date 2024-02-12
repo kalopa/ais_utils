@@ -79,8 +79,8 @@ void	process();
 void	serial_open(char *, speed_t);
 void	serial_read();
 void	ais_data(char *, int);
-void	udp_open(char *, int);
-void	udp_write(char *, int);
+void	tcp_open(char *, int);
+void	tcp_write(char *, int);
 void	make_path(char *);
 void	usage();
 
@@ -136,7 +136,7 @@ main(int argc, char *argv[])
 		}
 	}
 	serial_open(device, speed);
-	udp_open(host, port);
+	tcp_open(host, port);
 	process();
 	exit(0);
 }
@@ -297,14 +297,14 @@ ais_data(char *datap, int len)
 	*cp = '*';
 	if (endcp != NULL)
 		*endcp = oldch;
-	udp_write(datap, len);
+	tcp_write(datap, len);
 }
 
 /*
  *
  */
 void
-udp_open(char *host, int port)
+tcp_open(char *host, int port)
 {
 	struct sockaddr_in sin;
 	in_addr_t addr;
@@ -318,8 +318,8 @@ udp_open(char *host, int port)
 		}
 		memcpy((char *)&addr, hp->h_addr, hp->h_length);
 	}
-	if ((ufd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
-		perror("ais_read (udp_open)");
+	if ((ufd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+		perror("ais_read (tcp_open)");
 		exit(1);
 	}
 	memset(&sin, 0, sizeof(struct sockaddr_in));
@@ -336,10 +336,10 @@ udp_open(char *host, int port)
  *
  */
 void
-udp_write(char *bufp, int nbytes)
+tcp_write(char *bufp, int nbytes)
 {
 	if (write(ufd, bufp, nbytes) != nbytes) {
-		perror("ais_read (udp_write)");
+		perror("ais_read (tcp_write)");
 		exit(1);
 	}
 }
